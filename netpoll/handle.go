@@ -43,31 +43,31 @@ func Must(desc *Desc, err error) *Desc {
 	return desc
 }
 
-// HandleRead creates read descriptor for further use in Poller methods.
+// HandleRead creates read descriptor for further use in EventPoll methods.
 // It is the same as Handle(conn, EventRead|EventEdgeTriggered).
 func HandleRead(conn net.Conn) (*Desc, error) {
 	return Handle(conn, EventRead|EventEdgeTriggered)
 }
 
-// HandleReadOnce creates read descriptor for further use in Poller methods.
+// HandleReadOnce creates read descriptor for further use in EventPoll methods.
 // It is the same as Handle(conn, EventRead|EventOneShot).
 func HandleReadOnce(conn net.Conn) (*Desc, error) {
 	return Handle(conn, EventRead|EventOneShot)
 }
 
-// HandleWrite creates write descriptor for further use in Poller methods.
+// HandleWrite creates write descriptor for further use in EventPoll methods.
 // It is the same as Handle(conn, EventWrite|EventEdgeTriggered).
 func HandleWrite(conn net.Conn) (*Desc, error) {
 	return Handle(conn, EventWrite|EventEdgeTriggered)
 }
 
-// HandleWriteOnce creates write descriptor for further use in Poller methods.
+// HandleWriteOnce creates write descriptor for further use in EventPoll methods.
 // It is the same as Handle(conn, EventWrite|EventOneShot).
 func HandleWriteOnce(conn net.Conn) (*Desc, error) {
 	return Handle(conn, EventWrite|EventOneShot)
 }
 
-// HandleReadWrite creates read and write descriptor for further use in Poller
+// HandleReadWrite creates read and write descriptor for further use in EventPoll
 // methods.
 // It is the same as Handle(conn, EventRead|EventWrite|EventEdgeTriggered).
 func HandleReadWrite(conn net.Conn) (*Desc, error) {
@@ -76,7 +76,7 @@ func HandleReadWrite(conn net.Conn) (*Desc, error) {
 
 // Handle creates new Desc with given conn and event.
 // Returned descriptor could be used as argument to Start(), Resume() and
-// Stop() methods of some Poller implementation.
+// Stop() methods of some EventPoll implementation.
 func Handle(conn net.Conn, event Event) (*Desc, error) {
 	desc, err := handle(conn, event)
 	if err != nil {

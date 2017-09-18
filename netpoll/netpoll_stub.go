@@ -4,8 +4,8 @@ package netpoll
 
 import "fmt"
 
-// New always returns an error to indicate that Poller is not implemented for
+// New always returns an error to indicate that EventPoll is not implemented for
 // current operating system.
-func New(*Config) (Poller, error) {
+func New(*Config) (EventPoll, error) {
 	return nil, fmt.Errorf("poller is not supported on this operating system")
 }

@@ -3,10 +3,11 @@
 package netpoll
 
 import (
+	"fmt"
 	"reflect"
-	"sync"
 	"unsafe"
 
+	"golang.org/x/sync/syncmap"
 	"golang.org/x/sys/unix"
 )
 
@@ -186,29 +187,29 @@ const (
 // registered for an identifier.
 const filterCount = 8
 
-// Kevent represents kevent.
-type Kevent struct {
+// KEvent represents kevent.
+type KEvent struct {
 	Filter KeventFilter
 	Flags  KeventFlag
 	Fflags uint32
 	Data   int64
 }
 
-// Kevents is a fixed number of pairs of event filter and flags which can be
+// KEvents is a fixed number of pairs of event filter and flags which can be
 // registered for an identifier.
-type Kevents [8]Kevent
+type KEvents [8]KEvent
 
-// KeventHandler is a function that will be called when event occures on
+// KEventHandler is a function that will be called when event occures on
 // registered identifier.
-type KeventHandler func(Kevent)
+type KEventHandler func(KEvent)
 
-// KqueueConfig contains options for configuration kqueue instance.
-type KqueueConfig struct {
+// KQueueConfig contains options for configuration kqueue instance.
+type KQueueConfig struct {
 	// OnWaitError will be called from goroutine, waiting for events.
 	OnWaitError func(error)
 }
 
-func (c *KqueueConfig) withDefaults() (config KqueueConfig) {
+func (c *KQueueConfig) withDefaults() (config KQueueConfig) {
 	if c != nil {
 		config = *c
 	}
@@ -218,18 +219,18 @@ func (c *KqueueConfig) withDefaults() (config KqueueConfig) {
 	return config
 }
 
-// Kqueue represents kqueue instance.
-type Kqueue struct {
-	mu     sync.RWMutex
+// KQueue represents kqueue instance.
+type KQueue struct {
+	//mu     sync.RWMutex
 	fd     int
-	cb     map[int]KeventHandler
+	cb     syncmap.Map //map[uint64]KEventHandler
 	done   chan struct{}
 	closed bool
 }
 
-// KqueueCreate creates new kqueue instance.
+// KQueueCreate creates new kqueue instance.
 // It starts wait loop in a separate goroutine.
-func KqueueCreate(c *KqueueConfig) (*Kqueue, error) {
+func KQueueCreate(c *KQueueConfig) (*KQueue, error) {
 	config := c.withDefaults()
 
 	fd, err := unix.Kqueue()
@@ -237,9 +238,8 @@ func KqueueCreate(c *KqueueConfig) (*Kqueue, error) {
 		return nil, err
 	}
 
-	kq := &Kqueue{
+	kq := &KQueue{
 		fd:   fd,
-		cb:   make(map[int]KeventHandler),
 		done: make(chan struct{}),
 	}
 
@@ -250,13 +250,21 @@ func KqueueCreate(c *KqueueConfig) (*Kqueue, error) {
 
 // Close closes kqueue instance.
 // NOTE: not implemented yet.
-func (k *Kqueue) Close() error {
+func (k *KQueue) Close() error {
 	// TODO(): implement close.
+	select {
+	case <-k.done:
+		return ErrClosed
+	default:
+		close(k.done)
+	}
+	unix.Close(k.fd)
+
 	return nil
 }
 
 // Add adds a event handler for identifier fd with given n events.
-func (k *Kqueue) Add(fd int, events Kevents, n int, cb KeventHandler) error {
+func (k *KQueue) Add(fd int, events KEvents, n int, cb KEventHandler) error {
 	var kevs [filterCount]unix.Kevent_t
 	for i := 0; i < n; i++ {
 		kevs[i] = evGet(fd, events[i].Filter, events[i].Flags)
@@ -270,16 +278,13 @@ func (k *Kqueue) Add(fd int, events Kevents, n int, cb KeventHandler) error {
 	}
 	changes := *(*[]unix.Kevent_t)(unsafe.Pointer(hdr))
 
-	k.mu.Lock()
-	defer k.mu.Unlock()
-
 	if k.closed {
 		return ErrClosed
 	}
-	if _, has := k.cb[fd]; has {
+
+	if _, has := k.cb.LoadOrStore(uint64(fd), cb); has {
 		return ErrRegistered
 	}
-	k.cb[fd] = cb
 
 	_, err := unix.Kevent(k.fd, changes, nil, nil)
 
@@ -287,7 +292,7 @@ func (k *Kqueue) Add(fd int, events Kevents, n int, cb KeventHandler) error {
 }
 
 // Mod modifies events registered for fd.
-func (k *Kqueue) Mod(fd int, events Kevents, n int) error {
+func (k *KQueue) Mod(fd int, events KEvents, n int) error {
 	var kevs [filterCount]unix.Kevent_t
 	for i := 0; i < n; i++ {
 		kevs[i] = evGet(fd, events[i].Filter, events[i].Flags)
@@ -301,13 +306,10 @@ func (k *Kqueue) Mod(fd int, events Kevents, n int) error {
 	}
 	changes := *(*[]unix.Kevent_t)(unsafe.Pointer(hdr))
 
-	k.mu.RLock()
-	defer k.mu.RUnlock()
-
 	if k.closed {
 		return ErrClosed
 	}
-	if _, has := k.cb[fd]; !has {
+	if _, has := k.cb.Load(uint64(fd)); !has {
 		return ErrNotRegistered
 	}
 
@@ -318,23 +320,21 @@ func (k *Kqueue) Mod(fd int, events Kevents, n int) error {
 
 // Del removes callback for fd. Note that it does not cleanups events for fd in
 // kqueue. You should close fd or call Mod() with EV_DELETE flag set.
-func (k *Kqueue) Del(fd int) error {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-
+func (k *KQueue) Del(fd int) error {
 	if k.closed {
 		return ErrClosed
 	}
-	if _, has := k.cb[fd]; !has {
+
+	if _, has := k.cb.Load(uint64(fd)); !has {
 		return ErrNotRegistered
 	}
 
-	delete(k.cb, fd)
+	k.cb.Delete(uint64(fd))
 
 	return nil
 }
 
-func (k *Kqueue) wait(onError func(error)) {
+func (k *KQueue) wait(onError func(error)) {
 	const (
 		maxWaitEventsBegin = 1 << 10 // 1024
 		maxWaitEventsStop  = 1 << 15 // 32768
@@ -344,14 +344,24 @@ func (k *Kqueue) wait(onError func(error)) {
 		if err := unix.Close(k.fd); err != nil {
 			onError(err)
 		}
-		close(k.done)
+		select {
+		case <-k.done:
+		default:
+			close(k.done)
+		}
+
+		if r := recover(); r != nil {
+			fmt.Println(r)
+		}
 	}()
 
 	evs := make([]unix.Kevent_t, maxWaitEventsBegin)
-	cbs := make([]KeventHandler, maxWaitEventsBegin)
 
 	for {
 		n, err := unix.Kevent(k.fd, nil, evs, nil)
+		if n > len(evs) {
+			continue
+		}
 		if err != nil {
 			if temporaryErr(err) {
 				continue
@@ -360,34 +370,21 @@ func (k *Kqueue) wait(onError func(error)) {
 			return
 		}
 
-		cbs = cbs[:n]
-		k.mu.RLock()
-		for i := 0; i < n; i++ {
-			fd := int(evs[i].Ident)
-			if fd == -1 { //todo
-				k.mu.RUnlock()
-				return
-			}
-			cbs[i] = k.cb[fd]
-		}
-		k.mu.RUnlock()
-
-		for i, cb := range cbs {
-			if cb != nil {
-				e := evs[i]
-				cb(Kevent{
-					Filter: KeventFilter(e.Filter),
-					Flags:  KeventFlag(e.Flags),
-					Data:   e.Data,
-					Fflags: e.Fflags,
-				})
-				cbs[i] = nil
+		for _, e := range evs[:n] {
+			if entry, has := k.cb.Load(e.Ident); has {
+				if handler, ok := entry.(KEventHandler); ok {
+					handler(KEvent{
+						Filter: KeventFilter(e.Filter),
+						Flags:  KeventFlag(e.Flags),
+						Data:   e.Data,
+						Fflags: e.Fflags,
+					})
+				}
 			}
 		}
 
 		if n == len(evs) && n*2 <= maxWaitEventsStop {
 			evs = make([]unix.Kevent_t, n*2)
-			cbs = make([]KeventHandler, n*2)
 		}
 	}
 }

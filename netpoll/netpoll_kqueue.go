@@ -2,11 +2,11 @@
 
 package netpoll
 
-// New creates new kqueue-based Poller instance with given config.
-func New(c *Config) (Poller, error) {
+// New creates new kqueue-based EventPoll instance with given config.
+func New(c *Config) (EventPoll, error) {
 	cfg := c.withDefaults()
 
-	kq, err := KqueueCreate(&KqueueConfig{
+	kq, err := KQueueCreate(&KQueueConfig{
 		OnWaitError: cfg.OnWaitError,
 	})
 	if err != nil {
@@ -17,12 +17,12 @@ func New(c *Config) (Poller, error) {
 }
 
 type poller struct {
-	*Kqueue
+	*KQueue
 }
 
 func (p poller) Start(desc *Desc, cb CallbackFn) error {
 	n, events := toKevents(desc.event, true)
-	return p.Add(desc.fd(), events, n, func(kev Kevent) {
+	return p.Add(desc.fd(), events, n, func(kev KEvent) {
 		var (
 			event Event
 
@@ -52,7 +52,7 @@ func (p poller) Start(desc *Desc, cb CallbackFn) error {
 			event |= EventErr
 		}
 		if filter == _EVFILT_CLOSED {
-			event |= EventPollerClosed
+			event |= EventPollClosed
 		}
 
 		cb(event)
@@ -75,7 +75,7 @@ func (p poller) Resume(desc *Desc) error {
 	return p.Mod(desc.fd(), events, n)
 }
 
-func toKevents(event Event, add bool) (n int, ks Kevents) {
+func toKevents(event Event, add bool) (n int, ks KEvents) {
 	var flags KeventFlag
 	if add {
 		flags = EV_ADD

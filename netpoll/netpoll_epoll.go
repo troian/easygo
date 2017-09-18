@@ -2,8 +2,8 @@
 
 package netpoll
 
-// New creates new epoll-based Poller instance with given config.
-func New(c *Config) (Poller, error) {
+// New creates new epoll-based EventPoll instance with given config.
+func New(c *Config) (EventPoll, error) {
 	cfg := c.withDefaults()
 
 	epoll, err := EpollCreate(&EpollConfig{
@@ -16,12 +16,12 @@ func New(c *Config) (Poller, error) {
 	return poller{epoll}, nil
 }
 
-// poller implements Poller interface.
+// poller implements EventPoll interface.
 type poller struct {
 	*Epoll
 }
 
-// Start implements Poller.Start() method.
+// Start implements EventPoll.Start() method.
 func (ep poller) Start(desc *Desc, cb CallbackFn) error {
 	return ep.Add(desc.fd(), toEpollEvent(desc.event),
 		func(ep EpollEvent) {
@@ -43,7 +43,7 @@ func (ep poller) Start(desc *Desc, cb CallbackFn) error {
 				event |= EventErr
 			}
 			if ep&_EPOLLCLOSED != 0 {
-				event |= EventPollerClosed
+				event |= EventPollClosed
 			}
 
 			cb(event)
@@ -51,12 +51,12 @@ func (ep poller) Start(desc *Desc, cb CallbackFn) error {
 	)
 }
 
-// Stop implements Poller.Stop() method.
+// Stop implements EventPoll.Stop() method.
 func (ep poller) Stop(desc *Desc) error {
 	return ep.Del(desc.fd())
 }
 
-// Resume implements Poller.Resume() method.
+// Resume implements EventPoll.Resume() method.
 func (ep poller) Resume(desc *Desc) error {
 	return ep.Mod(desc.fd(), toEpollEvent(desc.event))
 }

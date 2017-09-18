@@ -55,16 +55,16 @@ var (
 	// net.Conn does not provide access to its file descriptor.
 	ErrNotFiler = fmt.Errorf("could not get file descriptor")
 
-	// ErrClosed is returned by Poller methods to indicate that instance is
+	// ErrClosed is returned by EventPoll methods to indicate that instance is
 	// closed and operation could not be processed.
 	ErrClosed = fmt.Errorf("poller instance is closed")
 
-	// ErrRegistered is returned by Poller Start() method to indicate that
+	// ErrRegistered is returned by EventPoll Start() method to indicate that
 	// connection with the same underlying file descriptor was already
 	// registered within the poller instance.
 	ErrRegistered = fmt.Errorf("file descriptor is already registered in poller instance")
 
-	// ErrNotRegistered is returned by Poller Stop() and Resume() methods to
+	// ErrNotRegistered is returned by EventPoll Stop() and Resume() methods to
 	// indicate that connection with the same underlying file descriptor was
 	// not registered before within the poller instance.
 	ErrNotRegistered = fmt.Errorf("file descriptor was not registered before in poller instance")
@@ -79,7 +79,7 @@ const (
 	EventWrite       = 0x2
 )
 
-// Event values that configure the Poller's behavior.
+// Event values that configure the EventPoll's behavior.
 const (
 	EventOneShot       Event = 0x4
 	EventEdgeTriggered       = 0x8
@@ -99,9 +99,9 @@ const (
 
 	EventErr = 0x80
 
-	// EventPollerClosed is a special Event value the receipt of which means that the
-	// Poller instance is closed.
-	EventPollerClosed = 0x8000
+	// EventPollClosed is a special Event value the receipt of which means that the
+	// EventPoll instance is closed.
+	EventPollClosed = 0x8000
 )
 
 // String returns a string representation of Event.
@@ -124,14 +124,14 @@ func (ev Event) String() (str string) {
 	name(EventWriteHup, "EventWriteHup")
 	name(EventHup, "EventHup")
 	name(EventErr, "EventErr")
-	name(EventPollerClosed, "EventPollerClosed")
+	name(EventPollClosed, "EventPollClosed")
 
 	return
 }
 
-// Poller describes an object that implements logic of polling connections for
+// EventPoll describes an object that implements logic of polling connections for
 // i/o events such as availability of read() or write() operations.
-type Poller interface {
+type EventPoll interface {
 	// Start adds desc to the observation list.
 	//
 	// Note that if desc was configured with OneShot event, then poller will
@@ -164,7 +164,7 @@ type Poller interface {
 // notification.
 type CallbackFn func(Event)
 
-// Config contains options for Poller configuration.
+// Config contains options for EventPoll configuration.
 type Config struct {
 	// OnWaitError will be called from goroutine, waiting for events.
 	OnWaitError func(error)
