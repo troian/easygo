@@ -17,11 +17,16 @@ type filer interface {
 type Desc struct {
 	file  *os.File
 	event Event
+	desc  int
 }
 
 // NewDesc creates descriptor from custom fd.
 func NewDesc(fd uintptr, ev Event) *Desc {
-	return &Desc{os.NewFile(fd, ""), ev}
+	file := os.NewFile(fd, "")
+	return &Desc{
+		file: file,
+		event: ev,
+		desc: int(file.Fd())}
 }
 
 // Close closes underlying file.
@@ -30,7 +35,7 @@ func (h *Desc) Close() error {
 }
 
 func (h *Desc) fd() int {
-	return int(h.file.Fd())
+	return h.desc
 }
 
 // Must is a helper that wraps a call to a function returning (*Desc, error).
@@ -116,5 +121,6 @@ func handle(x interface{}, event Event) (*Desc, error) {
 	return &Desc{
 		file:  file,
 		event: event,
+		desc:  int(file.Fd()),
 	}, nil
 }
