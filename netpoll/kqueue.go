@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"unsafe"
 
-	"golang.org/x/sync/syncmap"
+	"sync"
 	"golang.org/x/sys/unix"
 )
 
@@ -179,7 +179,7 @@ const (
 	// condition.
 	EV_EOF = unix.EV_EOF
 
-	// EV_ERROR is set to indiacate an error occured with the identtifier.
+	// EV_ERROR is set to indicate an error occurred with the identifier.
 	EV_ERROR = unix.EV_ERROR
 )
 
@@ -223,7 +223,7 @@ func (c *KQueueConfig) withDefaults() (config KQueueConfig) {
 type KQueue struct {
 	//mu     sync.RWMutex
 	fd     int
-	cb     syncmap.Map //map[uint64]KEventHandler
+	cb     sync.Map //map[uint64]KEventHandler
 	done   chan struct{}
 	closed bool
 }

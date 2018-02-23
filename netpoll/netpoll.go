@@ -92,13 +92,10 @@ const (
 	// both) is closed.
 	// Usually (depending on operating system and its version) the EventReadHup
 	// or EventWriteHup are also set int Event value.
-	EventHup Event = 0x10
-
-	EventReadHup  = 0x20
-	EventWriteHup = 0x40
-
-	EventErr = 0x80
-
+	EventHup      Event = 0x10
+	EventReadHup        = 0x20
+	EventWriteHup       = 0x40
+	EventErr            = 0x80
 	// EventPollClosed is a special Event value the receipt of which means that the
 	// EventPoll instance is closed.
 	EventPollClosed = 0x8000
@@ -174,6 +171,7 @@ func (c *Config) withDefaults() (config Config) {
 	if c != nil {
 		config = *c
 	}
+
 	if config.OnWaitError == nil {
 		config.OnWaitError = defaultOnWaitError
 	}
