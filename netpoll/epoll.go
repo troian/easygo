@@ -5,6 +5,7 @@ package netpoll
 import (
 	"sync"
 
+	"runtime"
 	"golang.org/x/sys/unix"
 )
 
@@ -98,7 +99,7 @@ func EpollCreate(c *EpollConfig) (*Epoll, error) {
 
 	// Set finalizer for write end of socket pair to avoid data races when
 	// closing Epoll instance and EBADF errors on writing ctl bytes from callers.
-	err = unix.EpollCtl(fd, unix.EPOLL_CTL_ADD, eventFd, &unix.EpollEvent{
+	err = unix.EpollCtl(fd, unix.EPOLL_CTL_ADD | unix.EPOLL_CLOEXEC, eventFd, &unix.EpollEvent{
 		Events: unix.EPOLLIN,
 		Fd:     int32(eventFd),
 	})
@@ -186,7 +187,7 @@ func (ep *Epoll) Add(fd int, events EpollEvent, cb func(EpollEvent)) (err error)
 	}
 	ep.callbacks[fd] = cb
 
-	return unix.EpollCtl(ep.fd, unix.EPOLL_CTL_ADD, fd, ev)
+	return unix.EpollCtl(ep.fd, unix.EPOLL_CTL_ADD | unix.EPOLL_CLOEXEC, fd, ev)
 }
 
 // Del removes fd from epoll set.
@@ -276,5 +277,8 @@ func (ep *Epoll) wait(onError func(error)) {
 			events = make([]unix.EpollEvent, n*2)
 			callbacks = make([]func(EpollEvent), 0, n*2)
 		}
+
+		// give more chance to other goroutine
+		runtime.Gosched()
 	}
 }

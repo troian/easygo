@@ -21,12 +21,36 @@ type Desc struct {
 }
 
 // NewDesc creates descriptor from custom fd.
-func NewDesc(fd uintptr, ev Event) *Desc {
+func NewDesc(fd uintptr, ev Event) (*Desc, error) {
 	file := os.NewFile(fd, "")
-	return &Desc{
+
+	desc, err := newDesc(file, ev)
+	if err != nil {
+		file.Close()
+		return nil, err
+	}
+	return desc, nil
+}
+
+// newDesc creates descriptor from custom fd.
+func newDesc(file *os.File, ev Event) (*Desc, error) {
+	desc := &Desc{
 		file: file,
 		event: ev,
-		desc: int(file.Fd())}
+		desc: int(file.Fd()),
+	}
+
+	// Set the file back to non blocking mode since conn.File() sets underlying
+	// os.File to blocking mode. This is useful to get conn.Set{Read}Deadline
+	// methods still working on source Conn.
+	//
+	// See https://golang.org/pkg/net/#TCPConn.File
+	// See /usr/local/go/src/net/net.go: conn.File()
+	if err := syscall.SetNonblock(desc.Fd(), true); err != nil {
+		return nil, os.NewSyscallError("setnonblock", err)
+	}
+
+	return desc, nil
 }
 
 // Close closes underlying file.
@@ -34,10 +58,14 @@ func (h *Desc) Close() error {
 	return h.file.Close()
 }
 
-func (h *Desc) fd() int {
+// Fd returns the underlying file descriptor
+func (h *Desc) Fd() int {
+	if h.desc == -1 {
+		h.desc = int(h.file.Fd())
+	}
+
 	return h.desc
 }
-
 // Must is a helper that wraps a call to a function returning (*Desc, error).
 // It panics if the error is non-nil and returns desc if not.
 // It is intended for use in short Desc initializations.
@@ -88,16 +116,6 @@ func Handle(conn net.Conn, event Event) (*Desc, error) {
 		return nil, err
 	}
 
-	// Set the file back to non blocking mode since conn.File() sets underlying
-	// os.File to blocking mode. This is useful to get conn.Set{Read}Deadline
-	// methods still working on source Conn.
-	//
-	// See https://golang.org/pkg/net/#TCPConn.File
-	// See /usr/local/go/src/net/net.go: conn.File()
-	if err = syscall.SetNonblock(desc.fd(), true); err != nil {
-		return nil, os.NewSyscallError("setnonblock", err)
-	}
-
 	return desc, nil
 }
 
@@ -118,9 +136,12 @@ func handle(x interface{}, event Event) (*Desc, error) {
 		return nil, err
 	}
 
-	return &Desc{
-		file:  file,
-		event: event,
-		desc:  int(file.Fd()),
-	}, nil
+	var desc *Desc
+
+	if desc, err = newDesc(file, event); err != nil {
+		file.Close()
+		return nil, err
+	}
+
+	return desc, nil
 }

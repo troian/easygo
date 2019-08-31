@@ -5,9 +5,10 @@ package netpoll
 import (
 	"fmt"
 	"reflect"
+	"runtime"
+	"sync"
 	"unsafe"
 
-	"sync"
 	"golang.org/x/sys/unix"
 )
 
@@ -221,9 +222,9 @@ func (c *KQueueConfig) withDefaults() (config KQueueConfig) {
 
 // KQueue represents kqueue instance.
 type KQueue struct {
-	//mu     sync.RWMutex
+	// mu     sync.RWMutex
 	fd     int
-	cb     sync.Map //map[uint64]KEventHandler
+	cb     sync.Map // map[uint64]KEventHandler
 	done   chan struct{}
 	closed bool
 }
@@ -258,9 +259,7 @@ func (k *KQueue) Close() error {
 	default:
 		close(k.done)
 	}
-	unix.Close(k.fd)
-
-	return nil
+	return unix.Close(k.fd)
 }
 
 // Add adds a event handler for identifier fd with given n events.
@@ -386,6 +385,9 @@ func (k *KQueue) wait(onError func(error)) {
 		if n == len(evs) && n*2 <= maxWaitEventsStop {
 			evs = make([]unix.Kevent_t, n*2)
 		}
+
+		// give more chance to other goroutine
+		runtime.Gosched()
 	}
 }
 
